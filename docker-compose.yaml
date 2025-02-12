@@ -1,0 +1,74 @@
+services:
+    nginx:
+        build:
+            context: ./nginx
+            dockerfile: Dockerfile
+        image: balance/nginx
+        container_name: nginx
+        ports:
+            - "80:80"
+        volumes:
+            - ./code:/data/mysite.local
+        networks:
+            - app-network
+    php:
+        build:
+            context: ./fpm
+            dockerfile: Dockerfile
+        working_dir: /data/mysite.local
+        image: balance/php
+        container_name: app1
+        env_file: code/docker.env
+        volumes:
+            - ./code:/data/mysite.local
+        networks:
+            - app-network
+        depends_on:
+            mysql:
+                condition: service_healthy
+
+    redis:
+        image: redis:7.2-rc2-bookworm
+        ports:
+            - '6379:6379'
+        command: redis-server --save 20 1 --loglevel warning
+        volumes:
+            - cache:/data
+        networks:
+            - app-network
+
+    memcached:
+        image: memcached
+        command:
+            - --conn-limit=1024
+            - --memory-limit=64
+            - --threads=4
+        networks:
+            - app-network
+
+    mysql:
+        image: mysql/mysql-server:8.0
+        environment:
+            MYSQL_ROOT_PASSWORD: $DB_PASSWORD
+            MYSQL_ROOT_HOST: "%"
+            MYSQL_DATABASE: $DB_DATABASE
+        ports:
+            - 3306:3306
+        volumes:
+            - mysqldata:/var/lib/mysql
+            - ./code:/data/mysite.local
+        healthcheck:
+            test: mysqladmin ping -h 127.0.0.1 -u root --password=$$MYSQL_ROOT_PASSWORD
+            interval: 5s
+            retries: 10
+        networks:
+            - app-network
+
+# Volumes
+volumes:
+    cache:
+        driver: local
+    mysqldata:
+
+networks:
+  app-network:
